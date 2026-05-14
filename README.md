@@ -103,4 +103,4 @@ This project is a functional slice designed for learning and demonstration. For 
 - **Resilience**: Dead Letter Queues (DLQ) and Graceful Shutdown patterns.
 
 ## License
-Educational / interview-prep use.
+Educational / A step before production grade.
