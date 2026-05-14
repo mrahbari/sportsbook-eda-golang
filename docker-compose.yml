@@ -1,0 +1,173 @@
+# `docker compose down -v` removes named volumes (MySQL data); only run if you intend to wipe the database.
+
+x-betting-env: &betting-env
+  MYSQL_DSN: sportsbook:sportsbook@tcp(mysql:3306)/sportsbook?parseTime=true
+  RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rootsecret
+      MYSQL_DATABASE: sportsbook
+      MYSQL_USER: sportsbook
+      MYSQL_PASSWORD: sportsbook
+    ports:
+      - "3306:3306"
+    volumes:
+      - sportsbook_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  migrate:
+    build: .
+    command: ["/app/migrate"]
+    environment:
+      MYSQL_DSN: sportsbook:sportsbook@tcp(mysql:3306)/sportsbook?parseTime=true
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  bet-service:
+    build: .
+    command: ["/app/bet-service"]
+    environment:
+      <<: *betting-env
+      HTTP_ADDR: ":8081"
+      ODDS_SERVICE_URL: "http://odds-service:8082"
+      DEV_MODE: "1"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  odds-service:
+    build: .
+    command: ["/app/odds-service"]
+    environment:
+      HTTP_ADDR: ":8082"
+
+  settlement-service:
+    build: .
+    command: ["/app/settlement-service"]
+    environment:
+      <<: *betting-env
+      HTTP_ADDR: ":8083"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  outbox-relay:
+    build: .
+    command: ["/app/outbox-relay"]
+    environment:
+      <<: *betting-env
+    depends_on:
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  wallet-service:
+    build: .
+    command: ["/app/wallet-service"]
+    environment:
+      <<: *betting-env
+    depends_on:
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  bet-worker:
+    build: .
+    command: ["/app/bet-worker"]
+    environment:
+      <<: *betting-env
+    depends_on:
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  risk-service:
+    build: .
+    command: ["/app/risk-service"]
+    environment:
+      <<: *betting-env
+    depends_on:
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  notification-service:
+    build: .
+    command: ["/app/notification-service"]
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  api-gateway:
+    build: .
+    command: ["/app/api-gateway"]
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    environment:
+      HTTP_ADDR: ":8080"
+      METRICS_ADDR: ":9090"
+      BET_SERVICE_URL: http://bet-service:8081
+      ODDS_SERVICE_URL: http://odds-service:8082
+      SETTLEMENT_SERVICE_URL: http://settlement-service:8083
+    depends_on:
+      outbox-relay:
+        condition: service_started
+      wallet-service:
+        condition: service_started
+      bet-worker:
+        condition: service_started
+      risk-service:
+        condition: service_started
+      notification-service:
+        condition: service_started
+      bet-service:
+        condition: service_started
+      odds-service:
+        condition: service_started
+      settlement-service:
+        condition: service_started
+
+volumes:
+  sportsbook_mysql_data:

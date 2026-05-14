@@ -1,0 +1,327 @@
+{
+	"info": {
+		"_postman_id": "a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d",
+		"name": "Sportsbook EDA Demo",
+		"description": "API collection for demonstrating the Event-Driven Sportsbook flow.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Health Check",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8080/healthz",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"healthz"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Bets",
+			"item": [
+				{
+					"name": "Place Bet (Success - User 1)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var jsonData = pm.response.json();",
+									"pm.environment.set(\"last_bet_id\", jsonData.bet_id);",
+									"pm.environment.set(\"correlation_id\", jsonData.correlation_id);",
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Request-Id",
+								"value": "{{$guid}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"user_id\": \"00000000-0000-0000-0000-000000000001\",\n    \"stake_amount\": \"10.50\",\n    \"currency\": \"USD\",\n    \"selection_id\": \"sel_demo_1\",\n    \"market_id\": \"mkt_demo_1\",\n    \"odds\": 1.95,\n    \"odds_version\": 42\n}"
+						},
+						"url": {
+							"raw": "http://localhost:8080/bets",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8080",
+							"path": [
+								"bets"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Place Bet (Fail - Insufficient Funds - User 2)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"user_id\": \"00000000-0000-0000-0000-000000000002\",\n    \"stake_amount\": \"100.00\",\n    \"currency\": \"USD\",\n    \"selection_id\": \"sel_demo_1\",\n    \"market_id\": \"mkt_demo_1\",\n    \"odds\": 2.50,\n    \"odds_version\": 1\n}"
+						},
+						"url": {
+							"raw": "http://localhost:8080/bets",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8080",
+							"path": [
+								"bets"
+							]
+						},
+						"description": "User 2 only has 5.00 USD. This bet will be placed as PENDING_RESERVE but then moved to REJECTED by the wallet consumer."
+					},
+					"response": []
+				},
+				{
+					"name": "Place Bet (Fail - Currency Mismatch - User 3)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"user_id\": \"00000000-0000-0000-0000-000000000003\",\n    \"stake_amount\": \"10.00\",\n    \"currency\": \"USD\",\n    \"selection_id\": \"sel_demo_1\",\n    \"market_id\": \"mkt_demo_1\",\n    \"odds\": 2.00,\n    \"odds_version\": 1\n}"
+						},
+						"url": {
+							"raw": "http://localhost:8080/bets",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8080",
+							"path": [
+								"bets"
+							]
+						},
+						"description": "User 3 has EUR wallet. Placing a USD bet will result in REJECTED status."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Settlement",
+			"item": [
+				{
+					"name": "Settle Bet (WIN)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"bet_id\": \"{{last_bet_id}}\",\n    \"user_id\": \"00000000-0000-0000-0000-000000000001\",\n    \"payout\": \"20.48\",\n    \"currency\": \"USD\",\n    \"outcome\": \"WIN\",\n    \"correlation_id\": \"{{correlation_id}}\"\n}"
+						},
+						"url": {
+							"raw": "http://localhost:8080/v1/settlements",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8080",
+							"path": [
+								"v1",
+								"settlements"
+							]
+						},
+						"description": "Credits the user wallet with the payout amount."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Odds",
+			"item": [
+				{
+					"name": "Get Market Odds",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:8080/v1/markets/mkt_demo_1/odds",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8080",
+							"path": [
+								"v1",
+								"markets",
+								"mkt_demo_1",
+								"odds"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Odds (Dynamic)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"odds_version\": 123,\n    \"status\": \"OPEN\",\n    \"selections\": [\n        {\n            \"selection_id\": \"sel_custom_1\",\n            \"price\": 2.50\n        }\n    ]\n}"
+						},
+						"url": {
+							"raw": "http://localhost:8080/v1/markets/my_new_market/odds",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8080",
+							"path": [
+								"v1",
+								"markets",
+								"my_new_market",
+								"odds"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Suspend Market (for testing)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"odds_version\": 124,\n    \"status\": \"SUSPENDED\",\n    \"selections\": [\n        {\n            \"selection_id\": \"sel_demo_1\",\n            \"price\": 1.95\n        }\n    ]\n}"
+						},
+						"url": {
+							"raw": "http://localhost:8080/v1/markets/mkt_demo_1/odds",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8080",
+							"path": [
+								"v1",
+								"markets",
+								"mkt_demo_1",
+								"odds"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Place Bet (Fail - Market Suspended)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"user_id\": \"00000000-0000-0000-0000-000000000001\",\n    \"stake_amount\": \"10.00\",\n    \"currency\": \"USD\",\n    \"selection_id\": \"sel_demo_1\",\n    \"market_id\": \"mkt_demo_1\",\n    \"odds\": 1.95,\n    \"odds_version\": 124\n}"
+						},
+						"url": {
+							"raw": "http://localhost:8080/bets",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8080",
+							"path": [
+								"bets"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Place Bet (Fail - Odds Drift/Version mismatch)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"user_id\": \"00000000-0000-0000-0000-000000000001\",\n    \"stake_amount\": \"10.00\",\n    \"currency\": \"USD\",\n    \"selection_id\": \"sel_demo_1\",\n    \"market_id\": \"mkt_demo_1\",\n    \"odds\": 1.95,\n    \"odds_version\": 1\n}"
+						},
+						"url": {
+							"raw": "http://localhost:8080/bets",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8080",
+							"path": [
+								"bets"
+							]
+						},
+						"description": "Sending odds_version=1 while the service has 124 will trigger a drift error."
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "last_bet_id",
+			"value": ""
+		}
+	]
+}
