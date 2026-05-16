@@ -2,11 +2,9 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -32,7 +30,7 @@ type oddsResponse struct {
 }
 
 // HandlePlaceBet handles POST /bets (stdlib net/http only).
-func HandlePlaceBet(db *sql.DB, log *slog.Logger, oddsServiceURL string) http.HandlerFunc {
+func HandlePlaceBet(service *bets.Service, oddsServiceURL string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -53,7 +51,7 @@ func HandlePlaceBet(db *sql.DB, log *slog.Logger, oddsServiceURL string) http.Ha
 			hreq, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 			resp, err := http.DefaultClient.Do(hreq)
 			if err != nil {
-				log.Error("odds service unavailable", "err", err)
+				service.Log.Error("odds service unavailable", "err", err)
 				writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "odds service unavailable"})
 				return
 			}
@@ -92,10 +90,10 @@ func HandlePlaceBet(db *sql.DB, log *slog.Logger, oddsServiceURL string) http.Ha
 			CausationID:  causation,
 		}
 
-		res, err := bets.PlaceBet(r.Context(), db, log, cmd)
+		res, err := service.PlaceBet(r.Context(), cmd)
 		if err != nil {
 			if errors.Is(err, bets.ErrValidation) {
-				log.Info("place bet validation", "err", err)
+				service.Log.Info("place bet validation", "err", err)
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 				return
 			}
@@ -103,12 +101,12 @@ func HandlePlaceBet(db *sql.DB, log *slog.Logger, oddsServiceURL string) http.Ha
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unknown user_id (run scripts/dev-seed.sql or insert users first)"})
 				return
 			}
-			log.Error("place bet", "err", err)
+			service.Log.Error("place bet", "err", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 			return
 		}
 
-		log.Info("bet placed", "bet_id", res.BetID, "correlation_id", res.CorrelationID)
+		service.Log.Info("bet placed", "bet_id", res.BetID, "correlation_id", res.CorrelationID)
 		writeJSON(w, http.StatusCreated, map[string]string{
 			"bet_id":         res.BetID,
 			"correlation_id": res.CorrelationID,

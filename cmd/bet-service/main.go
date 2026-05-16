@@ -11,11 +11,13 @@ import (
 	"syscall"
 	"time"
 
+	"learning.local/sportsbook/internal/app/bets"
 	"learning.local/sportsbook/internal/config"
 	"learning.local/sportsbook/internal/infra/httpapi"
 	mysqlstore "learning.local/sportsbook/internal/infra/mysql"
 	rmq "learning.local/sportsbook/internal/infra/rabbitmq"
 	"learning.local/sportsbook/internal/migrate"
+	"learning.local/sportsbook/internal/pkg/tracing"
 )
 
 func main() {
@@ -32,11 +34,10 @@ func main() {
 
 	db, err := mysqlstore.Open(ctx, cfg.MySQLDSN)
 	if err != nil {
-		log.Error("mysql", "err", err)
+		log.Error("mysql connect", "err", err)
 		os.Exit(1)
 	}
 	defer db.Close()
-	log.Info("mysql ping OK")
 
 	if err := migrate.Apply(ctx, db); err != nil {
 		log.Error("migrate", "err", err)
@@ -61,6 +62,14 @@ func main() {
 
 	pub := rmq.NewPublisher(ch)
 
+	// Initialize Repositories
+	betRepo := &mysqlstore.MysqlBetRepository{DB: db}
+	outboxRepo := &mysqlstore.MysqlOutboxRepository{}
+	processedRepo := &mysqlstore.MysqlProcessedEventRepository{}
+
+	// Initialize Service
+	betService := bets.NewService(db, betRepo, outboxRepo, processedRepo, log)
+
 	var metricsSrv *http.Server
 	if cfg.MetricsAddr != "" {
 		mx := http.NewServeMux()
@@ -71,7 +80,7 @@ func main() {
 			ReadHeaderTimeout: 5 * time.Second,
 		}
 		go func() {
-			log.Info("metrics listening", "addr", cfg.MetricsAddr, "path", "/debug/vars")
+			log.Info("metrics listening", "addr", cfg.MetricsAddr)
 			if err := metricsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				log.Error("metrics server", "err", err)
 			}
@@ -83,7 +92,7 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "service": "bet-service"})
 	})
-	mux.HandleFunc("/bets", httpapi.HandlePlaceBet(db, log, cfg.OddsServiceURL))
+	mux.HandleFunc("/bets", httpapi.HandlePlaceBet(betService, cfg.OddsServiceURL))
 
 	if cfg.DevMode {
 		log.Warn("DEV_MODE enabled: POST /dev/publish-test-bet-placed is exposed")
@@ -92,7 +101,11 @@ func main() {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
-			body := []byte(`{"metadata":{"event_id":"dev-test","correlation_id":"dev-test","causation_id":"dev-test","timestamp":"2026-01-01T00:00:00Z","version":"v1","producer":"api-dev"},"payload":{"note":"topology smoke test"}}`)
+			var body json.RawMessage
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				http.Error(w, "invalid json", http.StatusBadRequest)
+				return
+			}
 			pctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 			defer cancel()
 			if err := pub.PublishJSONDefault(pctx, "bet.placed.v1", body); err != nil {
@@ -100,14 +113,13 @@ func main() {
 				http.Error(w, "publish failed", http.StatusBadGateway)
 				return
 			}
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]string{"published": "bet.placed.v1"})
+			w.WriteHeader(http.StatusAccepted)
 		})
 	}
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           mux,
+		Handler:           tracing.Middleware(mux),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -125,9 +137,7 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	if metricsSrv != nil {
-		if err := metricsSrv.Shutdown(shutdownCtx); err != nil {
-			log.Error("metrics shutdown", "err", err)
-		}
+		_ = metricsSrv.Shutdown(shutdownCtx)
 	}
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Error("http shutdown", "err", err)

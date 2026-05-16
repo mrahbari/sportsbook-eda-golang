@@ -12,21 +12,28 @@ import (
 
 	"learning.local/sportsbook/internal/domain"
 	rmq "learning.local/sportsbook/internal/infra/rabbitmq"
+	"learning.local/sportsbook/internal/pkg/tracing"
 )
 
-// HandleDelivery logs accepted/settled events (tutorial stand-in for push / email / WS).
-func HandleDelivery(ctx context.Context, d amqp.Delivery, log *slog.Logger) error {
+type Service struct {
+	Log *slog.Logger
+}
+
+func NewService(log *slog.Logger) *Service {
+	return &Service{Log: log}
+}
+
+func (s *Service) Notify(ctx context.Context, d amqp.Delivery) error {
 	rk := d.RoutingKey
-	log.Debug("received event for notification", "routing_key", rk)
+	logger := tracing.Log(ctx, s.Log)
 	switch {
 	case strings.Contains(rk, "bet.accepted"):
 		var env domain.BetAcceptedV1
 		if err := json.Unmarshal(d.Body, &env); err != nil {
 			return fmt.Errorf("%w: json: %v", rmq.ErrPoison, err)
 		}
-		log.Info("NOTIFY: Bet Accepted",
+		logger.Info("NOTIFY: Bet Accepted",
 			"correlation_id", env.Metadata.CorrelationID,
-			"event_id", env.Metadata.EventID,
 			"bet_id", env.Payload.BetID,
 		)
 	case strings.Contains(rk, "bet.settled"):
@@ -34,22 +41,18 @@ func HandleDelivery(ctx context.Context, d amqp.Delivery, log *slog.Logger) erro
 		if err := json.Unmarshal(d.Body, &env); err != nil {
 			return fmt.Errorf("%w: json: %v", rmq.ErrPoison, err)
 		}
-		log.Info("NOTIFY: Bet Settled",
+		logger.Info("NOTIFY: Bet Settled",
 			"correlation_id", env.Metadata.CorrelationID,
-			"event_id", env.Metadata.EventID,
 			"bet_id", env.Payload.BetID,
 			"outcome", env.Payload.Outcome,
 			"payout", env.Payload.Payout,
 		)
-	default:
-		log.Warn("notify unknown routing key pattern", "rk", rk)
 	}
 	return nil
 }
 
-// Run starts q.notify.bet-events consumer.
-func Run(ctx context.Context, ch *amqp.Channel, log *slog.Logger, tag string, inflight *sync.WaitGroup) error {
+func Run(ctx context.Context, svc *Service, ch *amqp.Channel, tag string, inflight *sync.WaitGroup) error {
 	return rmq.ConsumeWithWaitGroup(ctx, ch, rmq.QueueNotifyBetEvents, tag, 0, inflight, func(ctx context.Context, d amqp.Delivery) error {
-		return HandleDelivery(ctx, d, log)
+		return svc.Notify(ctx, d)
 	})
 }

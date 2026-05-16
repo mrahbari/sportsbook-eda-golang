@@ -10,8 +10,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"learning.local/sportsbook/internal/app/odds"
 	"learning.local/sportsbook/internal/config"
+	mysqlstore "learning.local/sportsbook/internal/infra/mysql"
+	"learning.local/sportsbook/internal/infra/redis"
+	"learning.local/sportsbook/internal/pkg/tracing"
 )
 
 func main() {
@@ -26,8 +30,46 @@ func main() {
 		os.Exit(1)
 	}
 
+	db, err := mysqlstore.Open(ctx, cfg.MySQLDSN)
+	if err != nil {
+		log.Error("mysql connect", "err", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	var rdb *redis.Client
+	if cfg.RedisAddr != "" {
+		rdb = redis.NewClient(&redis.Options{
+			Addr: cfg.RedisAddr,
+		})
+		if err := rdb.Ping(ctx).Err(); err != nil {
+			log.Error("redis connect", "err", err)
+			os.Exit(1)
+		}
+		defer rdb.Close()
+	}
+
+	// Initialize Repositories
+	oddsRepo := &mysqlstore.MysqlOddsRepository{DB: db}
+	var oddsCache *redisstore.RedisOddsCache
+	if rdb != nil {
+		oddsCache = &redisstore.RedisOddsCache{Client: rdb}
+	}
+
+	// Initialize Service
+	oddsService := odds.NewService(oddsRepo, oddsCache, log)
+
+	if err := oddsService.Seed(ctx); err != nil {
+		log.Error("seeding", "err", err)
+	}
+
+	handler := &odds.Handler{
+		Service: oddsService,
+		Log:     log,
+	}
+
 	mux := http.NewServeMux()
-	odds.RegisterHTTP(mux)
+	handler.RegisterHTTP(mux)
 
 	var metricsSrv *http.Server
 	if cfg.MetricsAddr != "" {
@@ -48,7 +90,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           mux,
+		Handler:           tracing.Middleware(mux),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

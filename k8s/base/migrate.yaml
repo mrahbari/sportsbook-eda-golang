@@ -1,0 +1,15 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate
+spec:
+  template:
+    spec:
+      containers:
+      - name: migrate
+        image: sportsbook-migrate:latest
+        command: ["/app/migrate"]
+        envFrom:
+        - configMapRef:
+            name: sportsbook-config
+      restartPolicy: OnFailure

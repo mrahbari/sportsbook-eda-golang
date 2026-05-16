@@ -77,6 +77,20 @@ type BetSettledV1Payload struct {
 	Outcome  string `json:"outcome"` // WIN, LOSE, VOID
 }
 
+// WalletCreditedV1 is emitted after a payout is added back to a wallet.
+type WalletCreditedV1 struct {
+	Metadata EventMetadata           `json:"metadata"`
+	Payload  WalletCreditedV1Payload `json:"payload"`
+}
+
+type WalletCreditedV1Payload struct {
+	UserID   string `json:"user_id"`
+	Amount   string `json:"amount"`
+	Currency string `json:"currency"`
+	BetID    string `json:"bet_id"`
+	Reason   string `json:"reason"`
+}
+
 const (
 	EventTypeBetPlacedV1   = "bet.placed.v1"
 	RoutingKeyBetPlacedV1  = "bet.placed.v1"
@@ -92,6 +106,9 @@ const (
 	EventTypeBetSettledV1       = "bet.settled.v1"
 	RoutingKeyBetSettledV1     = "bet.settled.v1"
 	ProducerSettlementService  = "settlement-service"
+
+	EventTypeWalletCreditedV1  = "wallet.credited.v1"
+	RoutingKeyWalletCreditedV1 = "wallet.credited.v1"
 )
 
 // RFC3339NanoUTC formats t in UTC for event metadata.

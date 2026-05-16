@@ -1,5 +1,5 @@
 # Build static binaries for all services.
-FROM golang:1.22-alpine AS build
+FROM golang:1.25-alpine AS build
 RUN apk add --no-cache ca-certificates git
 WORKDIR /src
 COPY go.mod go.sum ./

@@ -14,6 +14,7 @@ import (
 	"learning.local/sportsbook/internal/config"
 	mysqlstore "learning.local/sportsbook/internal/infra/mysql"
 	"learning.local/sportsbook/internal/migrate"
+	"learning.local/sportsbook/internal/pkg/tracing"
 )
 
 func main() {
@@ -30,7 +31,7 @@ func main() {
 
 	db, err := mysqlstore.Open(ctx, cfg.MySQLDSN)
 	if err != nil {
-		log.Error("mysql", "err", err)
+		log.Error("mysql connect", "err", err)
 		os.Exit(1)
 	}
 	defer db.Close()
@@ -40,16 +41,23 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Initialize Repositories
+	betRepo := &mysqlstore.MysqlBetRepository{DB: db}
+	outboxRepo := &mysqlstore.MysqlOutboxRepository{}
+
+	// Initialize Service
+	settlementService := settlement.NewService(db, betRepo, outboxRepo, log)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "service": "settlement-service"})
 	})
-	settlement.RegisterHTTP(mux, db, log)
+	settlement.RegisterHTTP(mux, settlementService)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           mux,
+		Handler:           tracing.Middleware(mux),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sportsbook-config
+data:
+  MYSQL_DSN: "sportsbook:sportsbook@tcp(mysql:3306)/sportsbook?parseTime=true"
+  RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
+  REDIS_ADDR: "redis:6379"
+  ODDS_SERVICE_URL: "http://odds-service:8080"
+  BET_SERVICE_URL: "http://bet-service:8080"
+  SETTLEMENT_SERVICE_URL: "http://settlement-service:8080"
+  USE_CDC: "1"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: sportsbook-secrets
+type: Opaque
+data:
+  # Base64 for 'rootsecret'
+  mysql-root-password: "cm9vdHNlY3JldA=="
+  # Base64 for 'sportsbook'
+  mysql-password: "c3BvcnRzYm9vaw=="

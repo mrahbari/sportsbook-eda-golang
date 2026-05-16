@@ -1,0 +1,8 @@
+CREATE TABLE market_odds (
+  market_id VARCHAR(128) NOT NULL,
+  odds_version INT NOT NULL,
+  status VARCHAR(32) NOT NULL,
+  payload_json JSON NOT NULL,
+  updated_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (market_id)
+);

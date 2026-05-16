@@ -175,6 +175,28 @@
 			"name": "Odds",
 			"item": [
 				{
+					"name": "List All Odds",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "http://localhost:8080/v1/markets/odds",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "8080",
+							"path": [
+								"v1",
+								"markets",
+								"odds"
+							]
+						},
+						"description": "Returns a full list of all market odds available in the system."
+					},
+					"response": []
+				},
+				{
 					"name": "Get Market Odds",
 					"request": {
 						"method": "GET",

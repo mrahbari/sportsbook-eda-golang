@@ -41,9 +41,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Initialize Service
+	notifyService := notify.NewService(log)
+
 	tag := cmdutil.ConsumerTag("notify")
 	var inflight sync.WaitGroup
-	if err := notify.Run(ctx, ch, log, tag, &inflight); err != nil && !errors.Is(err, context.Canceled) {
+	if err := notify.Run(ctx, notifyService, ch, tag, &inflight); err != nil && !errors.Is(err, context.Canceled) {
 		log.Error("notify consumer exited", "err", err)
 	}
 	log.Info("bye")

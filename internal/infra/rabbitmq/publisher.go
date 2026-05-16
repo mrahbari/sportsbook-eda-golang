@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	amqp "github.com/rabbitmq/amqp091-go"
+	"learning.local/sportsbook/internal/pkg/tracing"
 )
 
 // Publisher wraps a channel with a mutex — channels are not goroutine-safe (design §7.3).
@@ -29,9 +30,13 @@ func (p *Publisher) PublishJSON(ctx context.Context, exchange, routingKey string
 		false,
 		false,
 		amqp.Publishing{
-			ContentType:  "application/json",
-			DeliveryMode: amqp.Persistent,
-			Body:         body,
+			Headers: amqp.Table{
+				tracing.HeaderXCorrelationID: tracing.FromContext(ctx),
+			},
+			CorrelationId: tracing.FromContext(ctx),
+			ContentType:   "application/json",
+			DeliveryMode:  amqp.Persistent,
+			Body:          body,
 		},
 	)
 }

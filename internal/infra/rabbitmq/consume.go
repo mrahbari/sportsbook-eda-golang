@@ -10,6 +10,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 
 	"learning.local/sportsbook/internal/metrics"
+	"learning.local/sportsbook/internal/pkg/tracing"
 )
 
 // Consume runs a blocking consumer loop (no in-flight WaitGroup tracking).
@@ -20,9 +21,6 @@ func Consume(ctx context.Context, ch *amqp.Channel, queue, consumerTag string, p
 // ConsumeWithWaitGroup is like Consume but tracks each handler invocation with wg (Add before, Done after).
 // On ctx cancellation: sends consumer Cancel, drains deliveries for up to shutdownDrainTimeout,
 // then waits up to shutdownHandlerWait for in-flight handlers.
-//
-// If shutdownHandlerWait is exceeded, handlers may still run after the connection closes — the broker
-// can redeliver those messages (at-least-once); this is weaker than a full §7.5 K8s grace window.
 const (
 	shutdownDrainTimeout   = 25 * time.Second
 	shutdownHandlerWait    = 8 * time.Second
@@ -48,6 +46,16 @@ func ConsumeWithWaitGroup(ctx context.Context, ch *amqp.Channel, queue, consumer
 			inflight.Add(1)
 			defer inflight.Done()
 		}
+
+		// Inject Correlation ID from message headers if present
+		corrID, _ := d.Headers[tracing.HeaderXCorrelationID].(string)
+		if corrID == "" {
+			corrID = d.CorrelationId
+		}
+		if corrID != "" {
+			runCtx = tracing.NewContext(runCtx, corrID)
+		}
+
 		return handler(runCtx, d)
 	}
 

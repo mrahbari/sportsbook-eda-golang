@@ -17,19 +17,19 @@ const (
 	QueueBetWalletReserved    = "q.bet.wallet-reserved"
 	QueueBetWalletReservedDLQ = "q.bet.wallet-reserved.dlq"
 
-	// Risk / analytics (design diagram): async check on bet placement.
+	// QueueRiskBetPlaced Risk / analytics (design diagram): async check on bet placement.
 	QueueRiskBetPlaced    = "q.risk.bet-placed"
 	QueueRiskBetPlacedDLQ = "q.risk.bet-placed.dlq"
 
-	// Wallet settlement leg (payout after bet.settled).
+	// QueueWalletBetSettled Wallet settlement leg (payout after bet.settled).
 	QueueWalletBetSettled    = "q.wallet.bet-settled"
 	QueueWalletBetSettledDLQ = "q.wallet.bet-settled.dlq"
 
-	// Notification fan-in: accepted + settled (simple tutorial queue).
+	// QueueNotifyBetEvents Notification fan-in: accepted + settled (simple tutorial queue).
 	QueueNotifyBetEvents    = "q.notify.bet-events"
 	QueueNotifyBetEventsDLQ = "q.notify.bet-events.dlq"
 
-	// PrefetchCount caps unacked deliveries per consumer (design §7.2).
+	// PrefetchDefault PrefetchCount caps unacked deliveries per consumer (design §7.2).
 	PrefetchDefault = 30
 )
 

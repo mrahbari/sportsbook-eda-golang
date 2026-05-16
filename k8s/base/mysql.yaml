@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:8.0
+        args:
+          - "--server-id=1"
+          - "--log-bin=mysql-bin"
+          - "--binlog-format=ROW"
+          - "--binlog-row-image=FULL"
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: sportsbook-secrets
+              key: mysql-root-password
+        - name: MYSQL_DATABASE
+          value: sportsbook
+        - name: MYSQL_USER
+          value: sportsbook
+        - name: MYSQL_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: sportsbook-secrets
+              key: mysql-password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-data
+          mountPath: /var/lib/mysql
+      volumes:
+      - name: mysql-data
+        emptyDir: {} # Use PV/PVC for staging/prod
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql

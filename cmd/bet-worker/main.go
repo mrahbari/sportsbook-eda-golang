@@ -55,9 +55,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Initialize Repositories
+	betRepo := &mysqlstore.MysqlBetRepository{DB: db}
+	outboxRepo := &mysqlstore.MysqlOutboxRepository{}
+	processedRepo := &mysqlstore.MysqlProcessedEventRepository{}
+
+	// Initialize Service
+	betService := apibets.NewService(db, betRepo, outboxRepo, processedRepo, log)
+
 	tag := cmdutil.ConsumerTag("bet-accept")
 	var inflight sync.WaitGroup
-	if err := apibets.RunBetAcceptConsumer(ctx, db, ch, log, tag, &inflight); err != nil && !errors.Is(err, context.Canceled) {
+	if err := apibets.RunBetAcceptConsumer(ctx, betService, ch, tag, &inflight); err != nil && !errors.Is(err, context.Canceled) {
 		log.Error("bet-accept consumer exited", "err", err)
 	}
 	log.Info("bye")

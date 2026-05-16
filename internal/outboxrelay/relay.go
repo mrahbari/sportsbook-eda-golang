@@ -3,12 +3,14 @@ package outboxrelay
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"time"
 
 	rmq "learning.local/sportsbook/internal/infra/rabbitmq"
 	"learning.local/sportsbook/internal/metrics"
+	"learning.local/sportsbook/internal/pkg/tracing"
 )
 
 // Relay polls outbox_events and publishes to RabbitMQ (at-least-once).
@@ -82,6 +84,16 @@ FOR UPDATE`).Scan(&id, &routingKey, &payload)
 	}
 
 	r.Log.Debug("publishing event from outbox", "outbox_id", id, "routing_key", routingKey)
+
+	// Extract Correlation ID from JSON to maintain trace
+	var envelope struct {
+		Metadata struct {
+			CorrelationID string `json:"correlation_id"`
+		} `json:"metadata"`
+	}
+	if err := json.Unmarshal(payload, &envelope); err == nil && envelope.Metadata.CorrelationID != "" {
+		ctx = tracing.NewContext(ctx, envelope.Metadata.CorrelationID)
+	}
 
 	pubCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
