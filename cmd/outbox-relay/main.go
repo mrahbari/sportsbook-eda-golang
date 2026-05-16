@@ -53,11 +53,31 @@ func main() {
 	}
 
 	pub := rmq.NewPublisher(ch)
-	relay := &outboxrelay.Relay{
-		DB:  db,
-		Pub: pub,
-		Log: log.With("component", "outbox_relay"),
+
+	if os.Getenv("USE_CDC") == "1" {
+		cdcDSN := cfg.MySQLCDCDSN
+		if cdcDSN == "" {
+			cdcDSN = cfg.MySQLDSN
+		}
+		cdc := &outboxrelay.CDCRelay{
+			DSN:            cdcDSN,
+			DB:             db,
+			Pub:            pub,
+			Log:            log.With("component", "cdc_relay"),
+			WritePublished: cfg.CDCWritePublishedAt,
+		}
+		if err := cdc.Run(ctx); err != nil {
+			log.Error("cdc relay", "err", err)
+			os.Exit(1)
+		}
+	} else {
+		relay := &outboxrelay.Relay{
+			DB:  db,
+			Pub: pub,
+			Log: log.With("component", "outbox_relay"),
+		}
+		relay.Run(ctx)
 	}
-	relay.Run(ctx)
+
 	log.Info("bye")
 }

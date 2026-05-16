@@ -55,9 +55,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Initialize Repositories
+	processedRepo := &mysqlstore.MysqlProcessedEventRepository{}
+
+	// Initialize Service
+	riskService := risk.NewService(db, processedRepo, log)
+
 	tag := cmdutil.ConsumerTag("risk")
 	var inflight sync.WaitGroup
-	if err := risk.Run(ctx, db, ch, log, tag, &inflight); err != nil && !errors.Is(err, context.Canceled) {
+	if err := risk.Run(ctx, riskService, ch, tag, &inflight); err != nil && !errors.Is(err, context.Canceled) {
 		log.Error("risk consumer exited", "err", err)
 	}
 	log.Info("bye")

@@ -1,0 +1,15 @@
+resources:
+- config.yaml
+- mysql.yaml
+- rabbitmq.yaml
+- redis.yaml
+- api-gateway.yaml
+- bet-service.yaml
+- odds-service.yaml
+- wallet-service.yaml
+- bet-worker.yaml
+- outbox-relay.yaml
+- risk-service.yaml
+- notification-service.yaml
+- settlement-service.yaml
+- migrate.yaml

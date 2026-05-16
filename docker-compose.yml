@@ -7,6 +7,11 @@ x-betting-env: &betting-env
 services:
   mysql:
     image: mysql:8.0
+    command:
+      - --server-id=1
+      - --log-bin=mysql-bin
+      - --binlog-format=ROW
+      - --binlog-row-image=FULL
     environment:
       MYSQL_ROOT_PASSWORD: rootsecret
       MYSQL_DATABASE: sportsbook
@@ -24,7 +29,8 @@ services:
       start_period: 30s
 
   rabbitmq:
-    image: rabbitmq:3.13-management-alpine
+    image: rabbitmq:3.13-management
+    user: root
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -35,11 +41,21 @@ services:
       retries: 10
       start_period: 20s
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   migrate:
     build: .
     command: ["/app/migrate"]
     environment:
-      MYSQL_DSN: sportsbook:sportsbook@tcp(mysql:3306)/sportsbook?parseTime=true
+      MYSQL_DSN: root:rootsecret@tcp(mysql:3306)/sportsbook?parseTime=true
     depends_on:
       mysql:
         condition: service_healthy
@@ -65,6 +81,15 @@ services:
     command: ["/app/odds-service"]
     environment:
       HTTP_ADDR: ":8082"
+      REDIS_ADDR: "redis:6379"
+      MYSQL_DSN: "sportsbook:sportsbook@tcp(mysql:3306)/sportsbook?parseTime=true"
+    depends_on:
+      redis:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   settlement-service:
     build: .
@@ -83,6 +108,7 @@ services:
     command: ["/app/outbox-relay"]
     environment:
       <<: *betting-env
+      USE_CDC: "1"
     depends_on:
       mysql:
         condition: service_healthy
@@ -144,7 +170,7 @@ services:
     command: ["/app/api-gateway"]
     ports:
       - "8080:8080"
-      - "9090:9090"
+      - "9091:9090"
     environment:
       HTTP_ADDR: ":8080"
       METRICS_ADDR: ":9090"

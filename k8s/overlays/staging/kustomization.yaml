@@ -1,0 +1,10 @@
+resources:
+- ../../base
+namePrefix: staging-
+commonLabels:
+  env: staging
+images:
+- name: sportsbook-api-gateway
+  newName: my-registry.com/sportsbook-api-gateway
+  newTag: staging
+# ... other images would be mapped here in a real CI/CD

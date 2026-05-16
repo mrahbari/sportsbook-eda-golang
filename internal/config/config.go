@@ -9,22 +9,32 @@ import (
 // Config holds runtime settings loaded from the environment.
 type Config struct {
 	MySQLDSN       string
+	MySQLCDCDSN    string // optional: specialized user for binlog replication
 	RabbitMQURL    string
 	HTTPAddr       string
 	OddsServiceURL string // added for live validation
 	DevMode        bool
 	MetricsAddr    string
+	CDCWritePublishedAt bool // if true, CDC relay updates outbox_events.published_at
 }
 
 // Load reads required environment variables. Missing vars return an error.
 func Load() (Config, error) {
+	// Default CDCWritePublishedAt to true unless explicitly set to "0" or "false"
+	cdcWB := true
+	if os.Getenv("CDC_WRITE_PUBLISHED_AT") == "0" || os.Getenv("CDC_WRITE_PUBLISHED_AT") == "false" {
+		cdcWB = false
+	}
+
 	c := Config{
-		MySQLDSN:       os.Getenv("MYSQL_DSN"),
-		RabbitMQURL:    os.Getenv("RABBITMQ_URL"),
-		HTTPAddr:       os.Getenv("HTTP_ADDR"),
-		OddsServiceURL: os.Getenv("ODDS_SERVICE_URL"),
-		DevMode:        os.Getenv("DEV_MODE") == "1" || os.Getenv("DEV_MODE") == "true",
-		MetricsAddr:    strings.TrimSpace(os.Getenv("METRICS_ADDR")),
+		MySQLDSN:            os.Getenv("MYSQL_DSN"),
+		MySQLCDCDSN:         os.Getenv("MYSQL_CDC_DSN"),
+		RabbitMQURL:         os.Getenv("RABBITMQ_URL"),
+		HTTPAddr:            os.Getenv("HTTP_ADDR"),
+		OddsServiceURL:      os.Getenv("ODDS_SERVICE_URL"),
+		DevMode:             os.Getenv("DEV_MODE") == "1" || os.Getenv("DEV_MODE") == "true",
+		MetricsAddr:         strings.TrimSpace(os.Getenv("METRICS_ADDR")),
+		CDCWritePublishedAt: cdcWB,
 	}
 	if c.MySQLDSN == "" {
 		return Config{}, fmt.Errorf("MYSQL_DSN is required")
@@ -68,10 +78,12 @@ func LoadGateway() (GatewayConfig, error) {
 	return g, nil
 }
 
-// OddsHTTPConfig is for cmd/odds-service (no database, no broker).
+// OddsHTTPConfig is for cmd/odds-service.
 type OddsHTTPConfig struct {
 	HTTPAddr    string
 	MetricsAddr string
+	RedisAddr   string
+	MySQLDSN    string
 }
 
 // LoadOddsHTTP reads env for the odds read API.
@@ -79,6 +91,8 @@ func LoadOddsHTTP() (OddsHTTPConfig, error) {
 	o := OddsHTTPConfig{
 		HTTPAddr:    strings.TrimSpace(os.Getenv("HTTP_ADDR")),
 		MetricsAddr: strings.TrimSpace(os.Getenv("METRICS_ADDR")),
+		RedisAddr:   strings.TrimSpace(os.Getenv("REDIS_ADDR")),
+		MySQLDSN:    strings.TrimSpace(os.Getenv("MYSQL_DSN")),
 	}
 	if o.HTTPAddr == "" {
 		o.HTTPAddr = ":8082"

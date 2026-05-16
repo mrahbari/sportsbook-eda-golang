@@ -55,6 +55,7 @@ func main() {
 		log.Error("rabbitmq reserve channel", "err", err)
 		os.Exit(1)
 	}
+
 	chSettled, err := conn.Channel()
 	if err != nil {
 		log.Error("rabbitmq settled channel", "err", err)
@@ -72,6 +73,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Initialize Repositories
+	walletRepo := &mysqlstore.MysqlWalletRepository{DB: db}
+	betRepo := &mysqlstore.MysqlBetRepository{DB: db}
+	outboxRepo := &mysqlstore.MysqlOutboxRepository{}
+	processedRepo := &mysqlstore.MysqlProcessedEventRepository{}
+
+	// Initialize Service
+	walletService := wallet.NewService(db, walletRepo, betRepo, outboxRepo, processedRepo, log)
+
 	tagR := cmdutil.ConsumerTag("wallet-reserve")
 	tagS := cmdutil.ConsumerTag("wallet-settled")
 	var inflightR, inflightS sync.WaitGroup
@@ -80,13 +90,14 @@ func main() {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		if err := wallet.RunBetPlacedConsumer(ctx, db, chReserve, log, tagR, &inflightR); err != nil && !errors.Is(err, context.Canceled) {
+		if err := wallet.RunBetPlacedConsumer(ctx, walletService, chReserve, tagR, &inflightR); err != nil && !errors.Is(err, context.Canceled) {
 			log.Error("wallet reserve consumer exited", "err", err)
 		}
 	}()
+
 	go func() {
 		defer wg.Done()
-		if err := wallet.RunBetSettledConsumer(ctx, db, chSettled, log, tagS, &inflightS); err != nil && !errors.Is(err, context.Canceled) {
+		if err := wallet.RunBetSettledConsumer(ctx, walletService, chSettled, tagS, &inflightS); err != nil && !errors.Is(err, context.Canceled) {
 			log.Error("wallet settled consumer exited", "err", err)
 		}
 	}()

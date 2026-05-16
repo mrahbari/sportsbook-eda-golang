@@ -1,0 +1,14 @@
+resources:
+- ../../base
+namePrefix: prod-
+commonLabels:
+  env: production
+# Production specific patches (e.g., more replicas, resource limits)
+patches:
+- target:
+    kind: Deployment
+    name: api-gateway
+  patch: |-
+    - op: replace
+      path: /spec/replicas
+      value: 3

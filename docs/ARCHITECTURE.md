@@ -15,7 +15,8 @@ By leveraging **RabbitMQ** as a message broker and the **Transactional Outbox Pa
 
 ## 2. High-Level Architecture
 
-The system follows a microservices pattern where services communicate asynchronously via RabbitMQ Topic Exchanges. Each service is responsible for its own domain logic and maintains its own state in a shared MySQL instance (partitioned by table prefix for simplicity in this demonstration).
+The system follows a microservices pattern where services communicate asynchronously via RabbitMQ Topic Exchanges. 
+Each service is responsible for its own domain logic and maintains its own state in a shared MySQL instance (partitioned by table prefix for simplicity in this demonstration).
 
 ### System Diagram
 
@@ -46,8 +47,10 @@ The system follows a microservices pattern where services communicate asynchrono
 ## 3. The Lifecycle of a Bet (Event Flow)
 
 1.  **Placement:** User submits a bet slip via the **API Gateway** to the **Bet Service**.
-2.  **Validation:** The **Bet Service** performs a synchronous check against the **Odds Service** to ensure the market is open and odds haven't drifted beyond tolerance.
-3.  **Persistence:** If valid, the **Bet Service** saves the bet as `PENDING_RESERVE` and records a `bet.placed.v1` event in its **Transactional Outbox**.
+2.  **Validation (Synchronous):** The **Bet Service** performs a synchronous check against the **Odds Service**. This check validates that:
+    -   The market is currently `OPEN`.
+    -   The `odds_version` submitted by the user matches the version stored in the **Odds Service**'s MySQL or Redis cache. If they differ, an "Odds Drift" error is returned, preventing the user from betting on stale prices.
+3.  **Persistence (Transactional):** If valid, the **Bet Service** saves the bet as `PENDING_RESERVE` and records a `bet.placed.v1` event in its **Transactional Outbox**.
 4.  **Relay:** The **Outbox Relay** polls the outbox and publishes the event to **RabbitMQ**.
 5.  **Reservation:** The **Wallet Service** consumes `bet.placed.v1`, reserves the funds from the user's balance, and emits `wallet.reserved.v1`.
 6.  **Acceptance:** The **Bet Service** (via `bet-worker`) consumes `wallet.reserved.v1`, moves the bet to `OPEN`, and emits `bet.accepted.v1`.
@@ -145,10 +148,10 @@ Messages that fail repeatedly or are "poison" (unparseable) are moved to the `xc
 
 ---
 
-## 9. Future Production Improvements
+## 9. Recently Implemented Production Improvements
 
-- **Change Data Capture (CDC):** Replace polling with a tool like **Debezium** to read MySQL binlogs for lower latency.
-- **Redis Caching:** Use Redis for hot market data (odds) to reduce MySQL read load.
+- **Change Data Capture (CDC):** Replaced polling with a binlog listener (simulating a tool like Debezium) in the `outbox-relay` for lower latency.
+- **Redis Caching:** Integrated Redis into the `odds-service` to cache hot market data and reduce MySQL read load.
 ---
 
 ## 10. Advanced System Design Scenarios

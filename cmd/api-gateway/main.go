@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"learning.local/sportsbook/internal/config"
+	"learning.local/sportsbook/internal/pkg/tracing"
 )
 
 func main() {
@@ -33,34 +34,40 @@ func main() {
 		log.Error("BET_SERVICE_URL", "err", err)
 		os.Exit(1)
 	}
+
 	oddsURL, err := url.Parse(gc.OddsServiceURL)
 	if err != nil {
 		log.Error("ODDS_SERVICE_URL", "err", err)
 		os.Exit(1)
 	}
 
-	betProxy := httputil.NewSingleHostReverseProxy(betURL)
-	betProxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		log.Error("proxy error: bet-service", "err", err, "url", r.URL.Path)
-		w.WriteHeader(http.StatusBadGateway)
+	proxyErrorHandler := func(serviceName string) func(http.ResponseWriter, *http.Request, error) {
+		return func(w http.ResponseWriter, r *http.Request, err error) {
+			log.Error("proxy error", "service", serviceName, "err", err, "url", r.URL.Path)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadGateway)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error":   "upstream service unavailable",
+				"service": serviceName,
+				"reason":  err.Error(),
+			})
+		}
 	}
 
+	betProxy := httputil.NewSingleHostReverseProxy(betURL)
+	betProxy.ErrorHandler = proxyErrorHandler("bet-service")
+
 	oddsProxy := httputil.NewSingleHostReverseProxy(oddsURL)
-	oddsProxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		log.Error("proxy error: odds-service", "err", err, "url", r.URL.Path)
-		w.WriteHeader(http.StatusBadGateway)
-	}
+	oddsProxy.ErrorHandler = proxyErrorHandler("odds-service")
 
 	settleURL, err := url.Parse(gc.SettlementServiceURL)
 	if err != nil {
 		log.Error("SETTLEMENT_SERVICE_URL", "err", err)
 		os.Exit(1)
 	}
+
 	settleProxy := httputil.NewSingleHostReverseProxy(settleURL)
-	settleProxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		log.Error("proxy error: settlement-service", "err", err, "url", r.URL.Path)
-		w.WriteHeader(http.StatusBadGateway)
-	}
+	settleProxy.ErrorHandler = proxyErrorHandler("settlement-service")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -91,7 +98,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              gc.HTTPAddr,
-		Handler:           mux,
+		Handler:           tracing.Middleware(mux),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
